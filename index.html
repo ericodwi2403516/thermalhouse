@@ -1,0 +1,207 @@
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <DHT.h>
+#include <Adafruit_BMP280.h>
+
+// ================================
+// KONFIGURASI OLED
+// ================================
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET -1
+#define OLED_ADDRESS 0x3C
+
+Adafruit_SSD1306 display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  OLED_RESET
+);
+
+// ================================
+// KONFIGURASI DHT22
+// ================================
+#define DHTPIN 4
+#define DHTTYPE DHT22
+
+DHT dht(DHTPIN, DHTTYPE);
+
+// ================================
+// KONFIGURASI BMP280 (HW-611)
+// ================================
+Adafruit_BMP280 bmp;
+
+bool bmpStatus = false;
+
+// ================================
+// SETUP
+// ================================
+void setup() {
+  Serial.begin(115200);
+  Serial.println(F("Starting Thermal House..."));
+
+  // Inisialisasi komunikasi I2C
+  Wire.begin();
+
+  // Inisialisasi sensor DHT22
+  dht.begin();
+
+  // Inisialisasi OLED
+  if (!display.begin(
+        SSD1306_SWITCHCAPVCC,
+        OLED_ADDRESS
+      )) {
+    Serial.println(F("SSD1306 allocation failed"));
+
+    while (true) {
+      delay(100);
+    }
+  }
+
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println(F("Thermal House"));
+  display.println(F("Initializing..."));
+  display.display();
+
+  // Inisialisasi BMP280
+  bmpStatus = bmp.begin(0x76);
+
+  // Coba alamat alternatif jika tidak terdeteksi
+  if (!bmpStatus) {
+    bmpStatus = bmp.begin(0x77);
+  }
+
+  if (bmpStatus) {
+    Serial.println(F("BMP280 detected successfully"));
+  } else {
+    Serial.println(
+      F("BMP280 not detected. Check wiring!")
+    );
+  }
+
+  delay(2000);
+}
+
+// ================================
+// LOOP UTAMA
+// ================================
+void loop() {
+
+  // Membaca data DHT22
+  float humidity = dht.readHumidity();
+  float tempDHT = dht.readTemperature();
+
+  // Variabel pembacaan BMP280
+  float pressure = NAN;
+  float tempBMP = NAN;
+
+  // Membaca data BMP280 jika sensor terdeteksi
+  if (bmpStatus) {
+    pressure = bmp.readPressure() / 100.0F;
+    tempBMP = bmp.readTemperature();
+  }
+
+  // Menampilkan data pada Serial Monitor
+  Serial.println();
+  Serial.println(F("===== THERMAL HOUSE ====="));
+
+  if (isnan(tempDHT) || isnan(humidity)) {
+    Serial.println(F("DHT22: Failed to read sensor"));
+  } else {
+    Serial.print(F("Suhu DHT22: "));
+    Serial.print(tempDHT, 1);
+    Serial.println(F(" C"));
+
+    Serial.print(F("Kelembapan: "));
+    Serial.print(humidity, 1);
+    Serial.println(F(" %"));
+  }
+
+  if (bmpStatus && !isnan(tempBMP) && !isnan(pressure)) {
+    Serial.print(F("Suhu BMP280: "));
+    Serial.print(tempBMP, 1);
+    Serial.println(F(" C"));
+
+    Serial.print(F("Tekanan: "));
+    Serial.print(pressure, 1);
+    Serial.println(F(" hPa"));
+  } else {
+    Serial.println(F("BMP280: Data unavailable"));
+  }
+
+  // ================================
+  // TAMPILAN OLED
+  // ================================
+  display.clearDisplay();
+
+  // Judul
+  display.setTextSize(1);
+  display.setCursor(0, 0);
+  display.println(F("Thermal House"));
+
+  display.drawLine(
+    0, 10,
+    SCREEN_WIDTH, 10,
+    SSD1306_WHITE
+  );
+
+  // Suhu dari DHT22
+  display.setCursor(0, 14);
+  display.print(F("Suhu A: "));
+
+  if (isnan(tempDHT)) {
+    display.println(F("Gagal"));
+  } else {
+    display.print(tempDHT, 1);
+    display.println(F(" C"));
+  }
+
+  // Suhu dari BMP280
+  display.setCursor(0, 26);
+  display.print(F("Suhu B: "));
+
+  if (!bmpStatus || isnan(tempBMP)) {
+    display.println(F("Gagal"));
+  } else {
+    display.print(tempBMP, 1);
+    display.println(F(" C"));
+  }
+
+  // Kelembapan dari DHT22
+  display.setCursor(0, 38);
+  display.print(F("Lembap: "));
+
+  if (isnan(humidity)) {
+    display.println(F("Gagal"));
+  } else {
+    display.print(humidity, 1);
+    display.println(F(" %"));
+  }
+
+  // Tekanan dari BMP280
+  display.setCursor(0, 50);
+  display.print(F("Tekanan: "));
+
+  if (bmpStatus &&
+      !isnan(pressure) &&
+      pressure > 0 &&
+      pressure < 2000) {
+
+    display.print(pressure, 1);
+    display.println(F(" hPa"));
+
+  } else {
+    display.println(F("Error"));
+  }
+
+  // Memperbarui tampilan OLED
+  display.display();
+
+  // Jeda pembacaan selama 2 detik
+  delay(2000);
+}
